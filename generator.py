@@ -77,9 +77,13 @@ def _source_list(chunks: list[dict]) -> list[str]:
     return sources
 
 
-def ask(question: str, k: int | None = None) -> dict:
+def ask(question: str, k: int | None = None, history: list[dict] | None = None) -> dict:
     """
     Answer `question` grounded in retrieved chunks.
+
+    `history` is a list of prior {"role": "user"|"assistant", "content": str}
+    dicts that are injected before the current turn so the LLM can resolve
+    references like "the first tactic you mentioned".
 
     Returns dict: {answer, sources, chunks, grounded}
       grounded=False means we declined because nothing was relevant enough.
@@ -99,15 +103,18 @@ def ask(question: str, k: int | None = None) -> dict:
         }
 
     context = _format_context(chunks)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if history:
+        messages.extend(history)
+    messages.append(
+        {"role": "user",
+         "content": USER_TEMPLATE.format(question=question, context=context)}
+    )
     resp = _client().chat.completions.create(
         model=config.LLM_MODEL,
         temperature=config.TEMPERATURE,
         max_tokens=config.MAX_TOKENS,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",
-             "content": USER_TEMPLATE.format(question=question, context=context)},
-        ],
+        messages=messages,
     )
     answer = resp.choices[0].message.content.strip()
 
